@@ -1,0 +1,83 @@
+---
+# tasks file for rundeck
+
+  - name: Installing Rundeck and Java on CentOS
+    block:
+        - name: Installing Java
+          yum: name=java-1.8.0 state=present
+        - name: Download Rundeck repository
+          yum:
+            name:         http://repo.rundeck.org/latest.rpm
+            state:        present
+        - name: Installing Rundeck
+          yum: name=rundeck state=present
+    when: ansible_facts['distribution'] == 'CentOS'
+      
+  - name: Installing rundeck on Ubuntu 14.04
+    block:
+        - name: Add Java repositories
+          apt_repository:
+             repo: 'ppa:openjdk-r/ppa'
+             state: present
+             update_cache: yes
+        - name: Installing Java
+          apt:  name=openjdk-8-jre update_cache=yes state=present
+        - name: Add Rundeck repositories
+          apt_repository:
+             repo:    "deb https://rundeck.bintray.com/rundeck-deb /"
+             state:    present
+             filename: rundeck
+        - name: Add Key Rundeck
+          apt_key:
+             url:   "https://bintray.com/user/downloadSubjectPublicKey?username=bintray"
+             state: present
+        - name: Installing Rundeck
+          apt: name=rundeck update_cache=yes state=present
+    when: ansible_facts['distribution'] == 'Ubuntu' and ansible_facts['distribution_version'] == "14.04"
+
+  - name: Installing rundeck on Ubuntu 18.04
+    block:
+        - name: Add Java repositories
+          apt_repository: 
+             repo:  'ppa:webupd8team/java'
+             state: present
+        - name: Installing Java 
+          apt: name=openjdk-8-jre update_cache=yes state=present
+        - name: Installing Rundeck
+          apt:
+            deb: https://download.rundeck.org/deb/rundeck_3.2.5.20200403-1_all.deb
+    when: ansible_facts['distribution'] == 'Ubuntu' and ansible_facts['distribution_version'] == "18.04"
+
+  - name: Check if string exist on files 
+    command: grep localhost /etc/rundeck/framework.properties  /etc/rundeck/rundeck-config.properties 
+    register: result
+    ignore_errors: yes
+
+  - name: Change files
+    block:
+      - name: Change lines on file /etc/rundeck/rundeck-config.properties
+        lineinfile:
+            path:   /etc/rundeck/rundeck-config.properties
+            regexp: 'localhost'
+            line:   "grails.serverURL=http://{{ inventory_hostname }}:4440"
+      - name : Change lines on file /etc/rundeck/framework.properties
+        lineinfile:
+            path:   /etc/rundeck/framework.properties
+            regexp: "{{ item.regexp }}"
+            line:   "{{ item.linha }}"
+            state: present
+        with_items:
+                - { regexp: 'framework.server.name = localhost',  linha: 'framework.server.name = {{ inventory_hostname }}' }
+                - { regexp: 'framework.server.hostname = localhost', linha: 'framework.server.hostname = {{ inventory_hostname }}' }    
+                - { regexp: 'framework.server.url = http://localhost:4440', linha: 'framework.server.url = http://{{ inventory_hostname }}:4440' }     
+    when: result.rc == 0                
+                    
+  - name: Restart Rundeck Service
+    service:
+       name:  rundeckd
+       state: restarted
+
+
+
+
+

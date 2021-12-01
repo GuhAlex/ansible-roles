@@ -1,0 +1,8 @@
+---
+
+- name: run playbook
+  hosts: all
+    become: yes
+      roles:
+         - rundeck
+
