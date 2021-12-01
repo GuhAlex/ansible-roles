@@ -1,0 +1,18 @@
+---
+
+packages_init:
+  - ca-certificates
+  - curl
+  - gnupg
+  - lsb-release
+  - apt-transport-https
+package_containerd: containerd.io
+package_k8s:
+  - kubelet
+  - kubeadm
+  - kubectl
+gpg_key_docker: "https://download.docker.com/linux/ubuntu/gpg"
+path_gpg_key_docker: "/usr/share/keyrings/docker-archive-keyring.gpg"
+gpg_key_k8s: "https://packages.cloud.google.com/apt/doc/apt-key.gpg"
+path_gpg_key_k8s: "/usr/share/keyrings/kubernetes-archive-keyring.gpg"
+repo_k8s: "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main"

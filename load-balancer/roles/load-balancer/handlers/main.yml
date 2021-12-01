@@ -1,0 +1,7 @@
+---
+# handlers file for load_balacner
+- name: Restart haproxy
+  systemd:
+    state: restarted
+    name: haproxy
+    enabled: yes

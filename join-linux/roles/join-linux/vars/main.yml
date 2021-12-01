@@ -1,0 +1,28 @@
+---
+# vars file for join-linux
+centos7_packages:
+  - epel-release
+  - sssd
+  - realmd
+  - oddjob-mkhomedir
+  - adcli
+  - samba-common
+  - samba-common-tools
+  - krb5-workstation
+  - openldap-clients
+  - policycoreutils-python
+  - python-pip
+
+pip_libraries:
+  - hvac
+  - pexpect
+
+domain: ""
+ip_adsever: ""
+hostname_adserver: ""
+fqdn_adserver: ""
+admin_user: ""
+vault_url: ""
+vault_role_id: ""
+vault_secret_id: ""
+password_adserver: "{{ lookup('hashi_vault', 'secret=services/data/adserver:password auth_method=approle role_id={{ vault_role_id }} secret_id={{ vault_secret_id }} url={{ vault_url }}' )}}"

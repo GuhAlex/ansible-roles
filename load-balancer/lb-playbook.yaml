@@ -1,0 +1,7 @@
+---
+
+- name: run playbook
+  hosts: all
+  become: yes
+  roles:
+   - load-balancer

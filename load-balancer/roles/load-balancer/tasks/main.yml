@@ -1,0 +1,8 @@
+---
+
+# tasks file for control-plane
+- include_vars: ubuntu.yml
+  when: ansible_distribution == "Ubuntu" and ansible_distribution_version == "20", ">="
+
+- include_tasks: ubuntu.yml
+  when: ansible_distribution == "Ubuntu" and ansible_distribution_version == "20", ">="

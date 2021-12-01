@@ -1,0 +1,13 @@
+---
+# handlers file for control-plane
+- name: Restart containerd
+  systemd:
+    state: restarted
+    name: containerd
+    enabled: yes
+
+- name: Enable Kubelet
+  systemd:
+    state: started
+    name: kubelet
+    enabled: yes

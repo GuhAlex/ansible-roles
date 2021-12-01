@@ -1,0 +1,5 @@
+---
+- name: Run join-linux role
+  hosts: all
+  roles:
+    - roles/join-linux

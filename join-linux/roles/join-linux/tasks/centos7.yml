@@ -1,0 +1,61 @@
+---
+
+ - name: Install necessary packages
+   yum:
+     name: '{{ centos7_packages }}'
+     state: present
+
+ - name: Install hvac library
+   pip:
+     name: '{{ pip_libraries }}'
+     state: present
+
+ - name: "Set /etc/resolv.conf"
+   template:
+     src: resolv.conf.j2
+     dest: /etc/resolv.conf
+     owner: root
+     group: root
+
+ - name: "Add line to /etc/hosts"
+   lineinfile:
+     path: /etc/hosts
+     line: "{{ ip_adsever }}  {{ fqdn_adserver }}   {{ hostname_adserver }}"
+     state: present
+
+ - name: Checking Domain Join status
+   command: id "{{ admin_user }}@{{ domain }}"
+   register: join_status
+   changed_when: false
+   ignore_errors: true
+
+ - name: Join to AD and configs
+   block:
+    - name: Join to AD
+      expect:
+       command: /bin/bash -c  "/usr/sbin/realm join --user={{ admin_user }} {{ domain }}"
+       responses:
+         Password for *: "{{ password_adserver }}"
+
+    - name: Replace one line on /etc/sssd/sssd.conf
+      replace:
+       path: /etc/sssd/sssd.conf
+       regexp: 'use_fully_qualified_names = True'
+       replace: 'use_fully_qualified_names = False'
+
+    - name: "Replace one line on /etc/sssd/sssd.conf"
+      replace:
+       path: /etc/sssd/sssd.conf
+       regexp: 'fallback_homedir = /home/%u@%d'
+       replace: 'fallback_homedir = /home/%u'
+      notify:
+        - Restart sssd
+
+    - name: Add the {{ group_linux }} AD Group to sudoers
+      lineinfile:
+        dest: /etc/sudoers
+        line: '%{{ group_linux }}@{{ domain }}        ALL=(ALL)       ALL'
+        insertafter: '^%wheel'
+      notify:
+        - Restart realmd
+   when: join_status.rc !=0

@@ -1,0 +1,98 @@
+---
+
+- name: Configure persistent loading of modules
+  template:
+    src: containerd.conf.j2
+    dest: /etc/modules-load.d/containerd.conf
+    owner: root
+    group: root
+
+- name: Setup required sysctl params, these persist across reboots
+  template:
+    src: kubernetes.conf.j2
+    dest: /etc/modules-load.d/kubernetes.conf
+    owner: root
+    group: root
+
+- name: Load at runtime
+  modprobe:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - overlay
+    - br_netfilter
+
+- name: Apply sysctl params without reboot
+  command: sudo sysctl --system
+
+- name: Install necessary init packages
+  apt:
+    name: "{{ packages_init }}"
+    state: present
+
+- name: Add Docker’s official GPG key
+  shell: curl -fsSL {{ gpg_key_docker }} | sudo gpg --dearmor --yes -o {{ path_gpg_key_docker }}
+
+- name: Get architecture
+  shell: dpkg --print-architecture
+  register: architecture
+
+- name: Get Release
+  shell: lsb_release -cs
+  register: release
+
+- name: Add docker repository into sources list
+  shell: echo "deb [arch={{ architecture.stdout }} signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu {{ release.stdout }} stable" > /etc/apt/sources.list.d/docker.list
+
+- name: Install Containerd Package
+  apt:
+    name: "{{ package_containerd }}"
+    state: present
+    update_cache: yes
+
+- name: Create containerd directory
+  file:
+    path: /etc/containerd
+    state: directory
+
+- name: Configure containerd
+  shell: sudo containerd config default>/etc/containerd/config.toml
+  notify: Restart containerd
+
+- name: Add K8s official GPG key
+  shell: curl -fsSL {{ gpg_key_k8s }} | sudo gpg --dearmor --yes -o {{ path_gpg_key_k8s }}
+
+- name: Add K8s repository into sources list
+  apt_repository:
+    repo: "{{ repo_k8s }}"
+    state: present
+    filename: kubernetes.list
+
+- name: Install K8s Package
+  apt:
+    name: "{{ package_k8s }}"
+    state: present
+  notify: Enable Kubelet
+
+- name: Enable UFW
+  ufw:
+    state: enabled
+    policy: allow
+
+- name: Allow K8s Nodes ports
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop:
+    - 10250
+    - 30000:32767
+
+- name: Disable Swap
+  command: sudo swapoff -a
+
+- name: Remove swapfile from /etc/fstab
+  mount:
+    name: swap
+    fstype: swap
+    state: absent

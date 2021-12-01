@@ -1,0 +1,14 @@
+---
+
+- name: Install HA-proxy
+  apt:
+    name: "{{ package }}"
+    state: present
+
+- name: Setup haproxy
+  template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    owner: root
+    group: root
+  notify: Restart haproxy

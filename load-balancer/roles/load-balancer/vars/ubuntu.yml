@@ -1,0 +1,5 @@
+package: haproxy
+hostname_master1: ""
+hostname_master2: ""
+ip_master1: ""
+ip_master2: ""

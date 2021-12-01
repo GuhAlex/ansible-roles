@@ -1,0 +1,12 @@
+---
+# handlers file for join-linux
+  - name: Restart sssd
+    systemd:
+     state: restarted
+     daemon_reload: yes
+     name: sssd
+
+  - name: Restart realmd
+    systemd:
+     state: restarted
+     name: realmd
