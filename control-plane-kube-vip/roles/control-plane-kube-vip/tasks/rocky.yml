@@ -1,0 +1,172 @@
+---
+
+- name: Upgrade all packages
+  dnf:
+    name: "*"
+    allowerasing: yes
+    nobest: yes
+    state: latest
+
+- name: Add IP address of all hosts to all hosts
+  lineinfile:
+    dest: /etc/hosts
+    line: "{{ hostvars[item].ansible_default_ipv4.address }} {{ hostvars[item].ansible_hostname }}"
+    state: present
+  with_items:
+    - "{{ groups['control_plane'] }}"
+
+- name: Configure persistent loading of modules
+  template:
+    src: containerd.conf.j2
+    dest: /etc/modules-load.d/containerd.conf
+    owner: root
+    group: root
+
+- name: Set Kernel parameters
+  template:
+    src: kubernetes.conf.j2
+    dest: /etc/sysctl.d/99-kubernetes-cri.conf
+    owner: root
+    group: root
+
+- name: Load at runtime
+  modprobe:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - overlay
+    - br_netfilter
+
+- name: Apply sysctl params without reboot
+  command: sudo sysctl --system
+
+- name: Install dependencies
+  dnf:
+    name: dnf-utils
+    state: latest
+
+- name: Add Docker-ce Repo
+  yum_repository:
+    name: docker
+    description: docker repository
+    baseurl: "https://download.docker.com/linux/centos/8/x86_64/stable/"
+    enabled: true
+    gpgcheck: true
+    gpgkey: "https://download.docker.com/linux/centos/gpg"
+
+- name: Install ContainerD
+  dnf:
+    name: containerd.io
+    state: latest
+
+- name: Create ContainerD directory
+  file:
+    path: /etc/containerd
+    state: directory
+
+- name: Setup ContainerD
+  shell: |
+         sudo containerd config default | sudo tee /etc/containerd/config.toml
+
+- name: Configuring the systemd cgroup driver
+  replace:
+    path: /etc/containerd/config.toml
+    regexp: 'SystemdCgroup = false'
+    replace: 'SystemdCgroup = true'
+
+- name: Stop and disable firewalld.
+  service:
+    name: firewalld
+    state: stopped
+    enabled: False
+
+- name: Disabling SELinux state
+  selinux:
+    state: disabled
+
+- name: Remove swapfile from /etc/fstab
+  mount:
+    name: swap
+    fstype: swap
+    state: absent
+
+- name: Disable swap for current session
+  command: swapoff -a
+  become: true
+
+- name: Restarted ContainerD
+  systemd:
+    name: containerd
+    state: restarted
+    enabled: yes
+
+- name: Add kubernetes repository
+  template:
+    src: 'kubernetes.repo.j2'
+    dest: /etc/yum.repos.d/kubernetes.repo
+
+- name: Install kubernetes packages
+  yum:
+    name: "{{ k8s_packages }}"
+    disable_excludes: kubernetes
+
+- name: Enable kubelet service
+  systemd:
+    name: kubelet
+    state: restarted
+    enabled: yes
+
+- name: Config Kube-vip
+  shell: |
+         ctr image pull ghcr.io/kube-vip/kube-vip:"{{ kv_version }}"
+         alias kube-vip="ctr run --rm --net-host ghcr.io/kube-vip/kube-vip:"{{ kv_version }}" vip /kube-vip"
+         kube-vip manifest pod --interface "{{ ansible_default_ipv4.alias }}" --vip "{{ vip }}" --controlplane --services --arp --leaderElection | tee /etc/kubernetes/manifests/kube-vip.yaml
+  when: ansible_default_ipv4.address == "{{ master_0 }}"
+
+- name: Init K8s
+  shell: |
+        sudo kubeadm init --control-plane-endpoint="{{ vip }}" --pod-network-cidr="{{ pod_net }}"
+  when: ansible_default_ipv4.address == "{{ master_0 }}"
+
+- name: Create certificate-key
+  shell: kubeadm init phase upload-certs --upload-certs | grep -v upload-certs
+  register: certificate
+  when: ansible_default_ipv4.address == "{{ master_0 }}"
+
+- name: Create Control Plane Join
+  shell: kubeadm token create --print-join-command --certificate-key "{{ certificate.stdout }}"
+  register: join
+  when: ansible_default_ipv4.address == "{{ master_0 }}"
+
+- name: Set variable to Join
+  set_fact: Join_Command="{{ join.stdout }}"
+  when: ansible_default_ipv4.address == "{{ master_0 }}"
+
+- name: Join Control Plane
+  command: "{{ hostvars[groups['control_plane'][0]]['Join_Command'] }}"
+  when: ansible_default_ipv4.address != "{{ master_0 }}"
+
+- name: Create .kube directory
+  file:
+    path: /root/.kube
+    state: directory
+
+- name: Copy admin.conf
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /root/.kube/config
+    remote_src: yes
+    owner: root
+    group: root
+
+- name: Config Kube-vip on others control-plane
+  shell: |
+         ctr image pull ghcr.io/kube-vip/kube-vip:"{{ kv_version }}"
+         alias kube-vip="ctr run --rm --net-host ghcr.io/kube-vip/kube-vip:"{{ kv_version }}" vip /kube-vip"
+         kube-vip manifest pod --interface "{{ ansible_default_ipv4.alias }}" --vip "{{ vip }}" --controlplane --services --arp --leaderElection | tee /etc/kubernetes/manifests/kube-vip.yaml
+  when: ansible_default_ipv4.address != "{{ master_0 }}"
+
+- name: Setup CNI
+  shell: |
+        kubectl create -f "{{ cni }}"
+  when: ansible_default_ipv4.address == "{{ master_0 }}"

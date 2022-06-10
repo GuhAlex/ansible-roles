@@ -1,0 +1,7 @@
+---
+# tasks file for control-plane-vip
+- include_vars: rocky.yml
+  when: ansible_distribution == 'Rocky'
+
+- include_tasks: rocky.yml
+  when: ansible_distribution == 'Rocky'
